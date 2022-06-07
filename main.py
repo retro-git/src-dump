@@ -62,16 +62,16 @@ lbs = get_game_leaderboards(args.game)
 
 j = json_encode_leaderboard(lbs[args.category])
 
-dir = 'out/{}/{}'.format(args.game, args.category)
+dir = 'out/{}{}'.format(args.game.strip(), args.category.strip())
 
 try:
-    os.makedirs(dir)
+    os.makedirs("out")
 except OSError as e:
     if e.errno != errno.EEXIST:
         raise
 
-with open(dir + '/data.json', 'w') as f:
+with open(dir + '.json', 'w') as f:
     f.write(j)
 
-with open(dir + '/data.csv', 'w') as f:
+with open(dir + '.csv', 'w') as f:
     f.write(pd.read_json(j).to_csv())

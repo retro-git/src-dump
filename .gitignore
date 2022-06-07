@@ -1,5 +1,6 @@
 venv/
 env/
+out/
 http_cache.sqlite
 *.csv
 *.json
