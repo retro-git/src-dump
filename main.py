@@ -10,6 +10,7 @@ import os, errno
 parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV")
 parser.add_argument('game', metavar='G', nargs=None, help='id of game') 
 parser.add_argument('category', metavar='C', nargs=None, help='name of category') 
+parser.add_argument("-il", metavar='il', nargs="?", help='name of IL for individual level categories', required=False) 
 
 args = parser.parse_args()
 
@@ -60,9 +61,9 @@ def json_encode_leaderboard(lb):
 
 lbs = get_game_leaderboards(args.game)
 
-j = json_encode_leaderboard(lbs[args.category])
+j = json_encode_leaderboard(lbs[args.category] if args.il is None else lbs[args.il][args.category])
 
-dir = 'out/{}{}'.format(args.game.strip(), args.category.strip())
+dir = 'out/{}-{}'.format(args.game, args.category)
 
 try:
     os.makedirs("out")
