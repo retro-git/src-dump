@@ -5,6 +5,7 @@ import pandas as pd
 import argparse
 import requests_cache
 from tenacity import *
+import os, errno
 
 parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV")
 parser.add_argument('game', metavar='G', nargs=None, help='id of game') 
@@ -61,8 +62,16 @@ lbs = get_game_leaderboards(args.game)
 
 j = json_encode_leaderboard(lbs[args.category])
 
-with open('data.json', 'w') as f:
+dir = 'out/{}/{}'.format(args.game, args.category)
+
+try:
+    os.makedirs(dir)
+except OSError as e:
+    if e.errno != errno.EEXIST:
+        raise
+
+with open(dir + '/data.json', 'w') as f:
     f.write(j)
 
-with open('data.csv', 'w') as f:
+with open(dir + '/data.csv', 'w') as f:
     f.write(pd.read_json(j).to_csv())
