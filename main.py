@@ -3,7 +3,8 @@ import srcomapi.datatypes as dt
 import json
 import pandas as pd
 import argparse
-import requests, requests_cache
+import requests_cache
+from tenacity import *
 
 parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV")
 parser.add_argument('game', metavar='G', nargs=None, help='id of game') 
@@ -33,27 +34,26 @@ def get_game_leaderboards(game_id):
 
     return lbs
 
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10))
+def append_run(r, runs):
+    runs.append(
+        {
+            "players": list(map(lambda p: p.name, r.players)),
+            "times": r.times['primary_t'],
+            "platform": dt.Platform(api, api.get("platforms/{}".format(r.system['platform']))).name if not r.system['platform'] is None else "",
+            "region": dt.Region(api, api.get("regions/{}".format(r.system['region']))).name if not r.system['region'] is None else "",
+            "emulated": r.system['emulated'],
+            "date": r.date,
+            "comment": r.comment,
+            "videos": list(map(lambda v: v['uri'], r.videos['links'])) if not r.videos is None else []
+        }
+    )
+
 def json_encode_leaderboard(lb):
     runs = []
     
-    for r in lb.runs:
-        r = r['run']
-        videos = []
-        if not r.videos is None:
-            videos = list(map(lambda v: v['uri'], r.videos['links']))
-
-        runs.append(
-            {
-                "players": list(map(lambda p: p.name, r.players)),
-                "times": r.times['primary_t'],
-                "platform": dt.Platform(api, api.get("platforms/{}".format(r.system['platform']))).name,
-                "region": dt.Region(api, api.get("regions/{}".format(r.system['region']))).name,
-                "emulated": r.system['emulated'],
-                "date": r.date,
-                "comment": r.comment,
-                "videos": videos
-            }
-        )
+    for run in lb.runs:
+        append_run(run['run'], runs)
 
     return json.dumps(runs)
 
