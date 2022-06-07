@@ -3,12 +3,15 @@ import srcomapi.datatypes as dt
 import json
 import pandas as pd
 import argparse
+import requests, requests_cache
 
 parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV")
 parser.add_argument('game', metavar='G', nargs=None, help='id of game') 
 parser.add_argument('category', metavar='C', nargs=None, help='name of category') 
 
 args = parser.parse_args()
+
+requests_cache.install_cache()
 
 api = srcomapi.SpeedrunCom()
 api.debug = 1
@@ -43,8 +46,8 @@ def json_encode_leaderboard(lb):
             {
                 "players": list(map(lambda p: p.name, r.players)),
                 "times": r.times['primary_t'],
-                "platform": api.get("platforms/{}".format(r.system['platform']))['name'],
-                "region": api.get("regions/{}".format(r.system['region']))['name'],
+                "platform": dt.Platform(api, api.get("platforms/{}".format(r.system['platform']))).name,
+                "region": dt.Region(api, api.get("regions/{}".format(r.system['region']))).name,
                 "emulated": r.system['emulated'],
                 "date": r.date,
                 "comment": r.comment,
