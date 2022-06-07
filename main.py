@@ -1,11 +1,17 @@
 import srcomapi
 import srcomapi.datatypes as dt
 import json
+import pandas as pd
+import argparse
+
+parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV")
+parser.add_argument('game', metavar='G', nargs=None, help='id of game') 
+parser.add_argument('category', metavar='C', nargs=None, help='name of category') 
+
+args = parser.parse_args()
 
 api = srcomapi.SpeedrunCom()
 api.debug = 1
-
-games = ["spyro1", "spyro2", "spyro3"]
 
 def get_game_leaderboards(game_id):
     game = api.get_game(game_id)
@@ -48,12 +54,12 @@ def json_encode_leaderboard(lb):
 
     return json.dumps(runs)
 
+lbs = get_game_leaderboards(args.game)
 
-lbs = get_game_leaderboards(games[1])
-
-any = lbs["Any%"]
-
-j = json_encode_leaderboard(any)
+j = json_encode_leaderboard(lbs[args.category])
 
 with open('data.json', 'w') as f:
     f.write(j)
+
+with open('data.csv', 'w') as f:
+    f.write(pd.read_json(j).to_csv())
