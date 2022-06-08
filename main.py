@@ -1,16 +1,20 @@
 import srcomapi
 import srcomapi.datatypes as dt
 import json
+import sqlite3
 import pandas as pd
 import argparse
 import requests_cache
 from tenacity import *
 import os, errno
 
-parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV")
+parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV/SQLite")
 parser.add_argument('game', metavar='G', nargs=None, help='id of game') 
 parser.add_argument('category', metavar='C', nargs=None, help='name of category') 
-parser.add_argument("-il", metavar='il', nargs="?", help='name of IL for individual level categories', required=False) 
+parser.add_argument("-il", nargs="?", help='name of IL for individual level categories', required=False) 
+parser.add_argument('--json', action='store_true', help="output JSON")
+parser.add_argument('--csv', action='store_true', help="output CSV")
+parser.add_argument('--sqlite', action='store_true', help="output SQLite DB")
 
 args = parser.parse_args()
 
@@ -40,28 +44,30 @@ def get_game_leaderboards(game_id):
 def append_run(r, runs):
     runs.append(
         {
-            "players": list(map(lambda p: p.name, r.players)),
+            "players": ", ".join(list(map(lambda p: p.name, r.players))),
             "times": r.times['primary_t'],
             "platform": dt.Platform(api, api.get("platforms/{}".format(r.system['platform']))).name if not r.system['platform'] is None else "",
             "region": dt.Region(api, api.get("regions/{}".format(r.system['region']))).name if not r.system['region'] is None else "",
             "emulated": r.system['emulated'],
             "date": r.date,
             "comment": r.comment,
-            "videos": list(map(lambda v: v['uri'], r.videos['links'])) if not r.videos is None else []
+            "videos": ", ".join(list(map(lambda v: v['uri'], r.videos['links'])) if not r.videos is None else [])
         }
     )
 
-def json_encode_leaderboard(lb):
+def get_runs_list(lb):
     runs = []
     
     for run in lb.runs:
         append_run(run['run'], runs)
 
-    return json.dumps(runs)
+    return runs
 
 lbs = get_game_leaderboards(args.game)
 
-j = json_encode_leaderboard(lbs[args.category] if args.il is None else lbs[args.il][args.category])
+runs = get_runs_list(lbs[args.category] if args.il is None else lbs[args.il][args.category])
+
+runs_json = json.dumps(runs)
 
 dir = 'out/{}-{}'.format(args.game, args.category)
 
@@ -71,8 +77,23 @@ except OSError as e:
     if e.errno != errno.EEXIST:
         raise
 
-with open(dir + '.json', 'w') as f:
-    f.write(j)
+if args.json:
+    with open(dir + '.json', 'w') as f:
+        f.write(runs_json)
 
-with open(dir + '.csv', 'w') as f:
-    f.write(pd.read_json(j).to_csv())
+if args.csv:
+    with open(dir + '.csv', 'w') as f:
+        f.write(pd.read_json(runs_json).to_csv())
+
+if args.sqlite:
+    connection = sqlite3.connect('out/db.sqlite')
+    cursor = connection.cursor()
+    cursor.execute('Create TABLE if not exists Run (game text, category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text)')
+
+    columns = ['players','times','platform','region','emulated','date','comment','videos']
+    for row in runs:
+        keys = (args.game, args.category) + tuple(row[c] for c in columns)
+        cursor.execute('insert into Run values(?,?,?,?,?,?,?,?,?,?)', keys)
+
+    connection.commit()
+    connection.close()
