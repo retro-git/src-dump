@@ -86,7 +86,7 @@ if args.csv:
         f.write(pd.read_json(runs_json).to_csv())
 
 if args.sqlite:
-    connection = sqlite3.connect('out/db.sqlite')
+    connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
     cursor.execute('Create TABLE if not exists Run (game text, category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text)')
 
