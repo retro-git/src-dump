@@ -7,6 +7,7 @@ import argparse
 import requests_cache
 from tenacity import *
 import os, errno
+import hashlib
 
 parser = argparse.ArgumentParser("Dump speedrun.com leaderboard to JSON/CSV/SQLite")
 parser.add_argument('game', metavar='G', nargs=None, help='id of game') 
@@ -93,6 +94,7 @@ if args.sqlite:
     columns = ['players','times','platform','region','emulated','date','comment','videos']
     for row in runs:
         keys = (args.game, args.category) + tuple(row[c] for c in columns) + (False, None)
+        hash = hashlib.sha256(repr(keys).encode()).hexdigest()
         cursor.execute('insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
 
     connection.commit()
