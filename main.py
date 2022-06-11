@@ -24,6 +24,7 @@ requests_cache.install_cache()
 api = srcomapi.SpeedrunCom()
 api.debug = 1
 
+@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_game_leaderboards(game_id):
     game = api.get_game(game_id)
 
@@ -41,10 +42,17 @@ def get_game_leaderboards(game_id):
 
     return lbs
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=10))
+@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def append_run(r, runs):
+    subcategory = ""
+    if r.values:
+        variable_id = next(iter(r.values.keys()))
+        var = dt.Variable(api, api.get("variables/{}".format(variable_id)))
+        subcategory = var.values["values"][r.values[variable_id]]["label"]
+
     runs.append(
         {
+            "subcategory": subcategory,
             "players": ", ".join(list(map(lambda p: p.name, r.players))),
             "times": r.times['primary_t'],
             "platform": dt.Platform(api, api.get("platforms/{}".format(r.system['platform']))).name if not r.system['platform'] is None else "",
@@ -89,13 +97,13 @@ if args.csv:
 if args.sqlite:
     connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
-    cursor.execute('Create TABLE if not exists {} (game text, category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, cheated integer, [editor\'s note] text)'.format(args.game))
+    cursor.execute('Create TABLE if not exists {} (game text, category text, subcategory text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, cheated integer, [editor\'s note] text)'.format(args.game))
 
-    columns = ['players','times','platform','region','emulated','date','comment','videos']
+    columns = list(runs[0].keys())
     for row in runs:
         keys = (args.game, args.category) + tuple(row[c] for c in columns) + (False, None)
         hash = hashlib.sha256(repr(keys).encode()).hexdigest()
-        cursor.execute('insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
+        cursor.execute('insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
 
     connection.commit()
     connection.close()
