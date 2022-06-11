@@ -28,9 +28,7 @@ requests_cache.install_cache()
 api = srcomapi.SpeedrunCom()
 api.debug = 1
 
-# @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
-
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_game_leaderboards(game_id):
     game = api.get_game(game_id)
 
@@ -48,9 +46,7 @@ def get_game_leaderboards(game_id):
 
     return lbs
 
-# @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
-
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def append_run(r, runs):
     subcategory = ""
     if r.values:
