@@ -53,11 +53,6 @@ def get_game_leaderboards(game_id):
 
 def append_run(r, runs):
     subcategory = ""
-   # if r.values:
-    # variable_id = next(iter(r.values.keys()))
-    # var = dt.Variable(api, api.get("variables/{}".format(variable_id)))
-    #subcategory = var.values["values"][r.values[variable_id]]["label"]
-
     if r.values:
         subcategory = ", ".join(
             list(map(lambda k: dt.Variable(api, api.get("variables/{}".format(k))).values["values"][r.values[k]]["label"], r.values.keys())))
