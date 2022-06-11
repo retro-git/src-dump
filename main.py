@@ -42,7 +42,7 @@ def get_game_leaderboards(game_id):
             for level in game.levels:
                 lbs[category.name][level.name] = dt.Leaderboard(api, data=api.get(
                     "leaderboards/{}/level/{}/{}?embed=variables".format(game.id, level.id, category.id)))
-        elif category.type == 'per-game':
+        elif category.type == 'per-game' and not args.il:
             lbs[category.name] = dt.Leaderboard(api, data=api.get(
                 "leaderboards/{}/category/{}?embed=variables".format(game.id, category.id)))
 
