@@ -111,15 +111,15 @@ if args.sqlite:
     connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
     cursor.execute(
-        'Create TABLE if not exists {} (game text, category text, subcategory text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, cheated integer, [editor\'s note] text)'.format(args.game))
+        'Create TABLE if not exists {} (game text, category text, subcategory text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, [no video] integer)'.format(args.game))
 
     columns = list(runs[0].keys())
     for row in runs:
         keys = (args.game, args.category) + \
-            tuple(row[c] for c in columns) + (False, None)
+            tuple(row[c] for c in columns) + (None, False, False, False, False, True if row["videos"] == "" else False)
         hash = hashlib.sha256(repr(keys).encode()).hexdigest()
         cursor.execute(
-            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
+            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
 
     connection.commit()
     connection.close()
