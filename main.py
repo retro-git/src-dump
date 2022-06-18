@@ -9,6 +9,7 @@ from tenacity import *
 import os
 import errno
 import hashlib
+import requests
 
 parser = argparse.ArgumentParser(
     "Dump speedrun.com leaderboard to JSON/CSV/SQLite")
@@ -29,11 +30,32 @@ api = srcomapi.SpeedrunCom()
 api.debug = 1
 
 @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
+def get_all_runs(gameid, catid):
+    ret = list()
+    offset = 0
+    i = 1
+    while True:
+        print(i)
+        i += 1
+        req = requests.get("https://www.speedrun.com/api/v1/runs?game={}&category={}&embed=players&offset={}".format(gameid, catid, offset)).json()
+        size = req["pagination"]["size"]
+        if size > 0:
+            ret = ret + req["data"]
+            offset += size
+        else:
+            break
+
+    return ret
+
+@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_game_leaderboards(game_id):
     game = api.get_game(game_id)
 
     lbs = {}
+
     for category in game.categories:
+        if category.name != args.category:
+            continue
         if not category.name in lbs:
             lbs[category.name] = {}
         if category.type == 'per-level' and args.il:
@@ -41,34 +63,45 @@ def get_game_leaderboards(game_id):
                 lbs[category.name][level.name] = dt.Leaderboard(api, data=api.get(
                     "leaderboards/{}/level/{}/{}?embed=variables".format(game.id, level.id, category.id)))
         elif category.type == 'per-game' and not args.il:
-            lbs[category.name] = dt.Leaderboard(api, data=api.get(
-                "leaderboards/{}/category/{}?embed=variables".format(game.id, category.id)))
+            lbs[category.name] = get_all_runs(game.id, category.id)
+                #"leaderboards/{}/category/{}?embed=variables".format(game.id, category.id)))
 
     return lbs
 
 @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def append_run(r, runs):
     subcategory = ""
-    if r.values:
+
+    if r["values"]:
         subcategory = ", ".join(
-            list(map(lambda k: dt.Variable(api, api.get("variables/{}".format(k))).values["values"][r.values[k]]["label"], r.values.keys())))
+            list(map(lambda k: dt.Variable(api, api.get("variables/{}".format(k))).values["values"][r["values"][k]]["label"], r["values"].keys())))
 
     videos = ""
-    if not r.videos is None:
-        videos = ", ".join(list(map(lambda v: v['uri'], r.videos['links']))) if r.videos.get(
-            "text") is None else r.videos.get("text")
+    if not r["videos"] is None:
+        videos = ", ".join(list(map(lambda v: v['uri'], r["videos"]['links']))) if r["videos"].get(
+            "text") is None else r["videos"].get("text")
+
+    players = ""
+    try:
+        players = ", ".join(list(map(lambda p: p['names']['international'], r["players"]["data"])))
+    except KeyError:
+        players = ", ".join(list(map(lambda p: p['name'], r["players"]["data"])))
+
+    rejected = 1 if r["status"]["status"] == "rejected" else 0
 
     runs.append(
         {
             "subcategory": subcategory,
-            "players": ", ".join(list(map(lambda p: p.name, r.players))),
-            "times": r.times['primary_t'],
-            "platform": dt.Platform(api, api.get("platforms/{}".format(r.system['platform']))).name if not r.system['platform'] is None else "",
-            "region": dt.Region(api, api.get("regions/{}".format(r.system['region']))).name if not r.system['region'] is None else "",
-            "emulated": r.system['emulated'],
-            "date": r.date,
-            "comment": r.comment,
-            "videos": videos
+            "players": players,
+            "times": r["times"]['primary_t'],
+            "platform": dt.Platform(api, api.get("platforms/{}".format(r["system"]['platform']))).name if not r["system"]['platform'] is None else "",
+            "region": dt.Region(api, api.get("regions/{}".format(r["system"]['region']))).name if not r["system"]['region'] is None else "",
+            "emulated": r["system"]['emulated'],
+            "date": r["date"],
+            "comment": r["comment"],
+            "videos": videos,
+            "rejected": rejected,
+            "reason": r["status"]["reason"] if rejected else ""
         }
     )
 
@@ -76,9 +109,9 @@ def append_run(r, runs):
 def get_runs_list(lb):
     runs = []
     i = 0
-    for run in lb.runs:
+    for run in lb:
         print(i)
-        append_run(run['run'], runs)
+        append_run(run, runs)
         i = i + 1
 
     return runs
@@ -111,16 +144,16 @@ if args.sqlite:
     connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
     cursor.execute(
-        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text)'.format(args.game))
+        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text)'.format(args.game))
 
     #columns = list(runs[0].keys())
-    columns = ["players", "times", "platform", "region", "emulated", "date", "comment", "videos"]
+    columns = ["players", "times", "platform", "region", "emulated", "date", "comment", "videos", "rejected", "reason"]
     for row in runs:
         keys = (args.category,) + \
             tuple(row[c] for c in columns) + (None, False, False, False, False, False, True if row["videos"] == "" else False) + (row['subcategory'],)
         hash = hashlib.sha256(repr(keys).encode()).hexdigest()
         cursor.execute(
-            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
+            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
 
     connection.commit()
     connection.close()
