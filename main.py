@@ -120,7 +120,8 @@ def append_run(r, runs):
             "videos": videos,
             "rejected": rejected,
             "reason": reason + " ({})".format(examiner) if rejected else "",
-            "new": new
+            "new": new,
+            "id": r["id"]
         }
     )
 
@@ -166,7 +167,7 @@ if args.sqlite:
     connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
     cursor.execute(
-        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, new integer, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text, hash text)'.format(args.game))
+        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, new integer, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text, id text, hash text)'.format(args.game))
 
     #columns = list(runs[0].keys())
     columns = ["players", "times", "platform", "region", "emulated",
@@ -174,20 +175,27 @@ if args.sqlite:
     for row in runs:
         keys = (args.category,) + \
             tuple(row[c] for c in columns) + (None, False, False, False, False,
-                                              False, True if row["videos"] == "" else False) + (row['subcategory'],)
-        hash = hashlib.sha256(repr(keys).encode()).hexdigest()
+                                              False, True if row["videos"] == "" else False) + (row['subcategory'], row['id'])
+        keys_hash = (args.category,) + tuple(row[c] for c in columns) + (row['subcategory'], row['id'])
+        hash = hashlib.sha256(repr(keys_hash).encode()).hexdigest()
 
         #cursor.execute("SELECT * FROM {} WHERE player='{}' AND category='{}' AND time='{}' AND date='{}' AND rejected='{}'"
                       # .format(args.game, row["players"], args.category, row["times"], row["date"], row["rejected"], row["comment"], row["reason"]))
-        cursor.execute("SELECT * FROM {} WHERE hash='{}'".format(args.game, hash))
+        cursor.execute("SELECT hash FROM {} WHERE id='{}'".format(args.game, row["id"]))
         result = cursor.fetchall()
-        print(result)
+        #print(result)
         if len(result) > 0:
-            with open("out/duplicates.csv", 'a+') as f:
-                #f.write(pd.read_json(json.dumps(result)).to_csv(header=header_dup, index=False))
-                if header_dup == True:
-                    header_dup = False
-            continue
+            h = result[0][0]
+            if h == hash:
+                with open("out/duplicates.csv", 'a+') as f:
+                    cursor.execute("SELECT * FROM {} WHERE id='{}'".format(args.game, row["id"]))
+                    full_row = cursor.fetchall()
+                    f.write(pd.read_json(json.dumps(full_row)).to_csv(header=header_dup, index=False))
+                    if header_dup == True:
+                        header_dup = False
+                continue
+            else:
+                cursor.execute("DELETE from {} where id='{}'".format(args.game, row["id"]))
 
         with open("out/new.csv", 'a+') as f:
             f.write(pd.read_json(json.dumps([(args.game,) + keys + (hash,)])).to_csv(header=header_new, index=False))
@@ -195,7 +203,7 @@ if args.sqlite:
                 header_new = False
 
         cursor.execute(
-            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys + (hash,))
+            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys + (hash,))
 
     connection.commit()
     connection.close()
