@@ -68,7 +68,7 @@ def get_game_leaderboards(game_id):
 
     return lbs
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
+#@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def append_run(r, runs):
     subcategory = ""
 
@@ -89,6 +89,16 @@ def append_run(r, runs):
 
     rejected = 1 if r["status"]["status"] == "rejected" else 0
 
+    examiner = ""
+
+    if "examiner" in r["status"] and not r["status"]["examiner"] is None:
+        examiner_req = requests.get("https://www.speedrun.com/api/v1/users/{}".format(r["status"]["examiner"])).json()
+        if "status" not in examiner_req:
+            examiner = examiner_req["data"]["names"]["international"]
+
+    reason = r["status"]["reason"] if rejected else ""
+    reason = '' if reason is None else str(reason)
+
     runs.append(
         {
             "subcategory": subcategory,
@@ -101,7 +111,7 @@ def append_run(r, runs):
             "comment": r["comment"],
             "videos": videos,
             "rejected": rejected,
-            "reason": r["status"]["reason"] if rejected else ""
+            "reason": reason + " ({})".format(examiner) if rejected else ""
         }
     )
 
