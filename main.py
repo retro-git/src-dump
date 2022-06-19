@@ -10,6 +10,7 @@ import os
 import errno
 import hashlib
 import requests
+import os.path
 
 parser = argparse.ArgumentParser(
     "Dump speedrun.com leaderboard to JSON/CSV/SQLite")
@@ -29,6 +30,7 @@ requests_cache.install_cache()
 api = srcomapi.SpeedrunCom()
 api.debug = 1
 
+
 @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_all_runs(gameid, catid):
     ret = list()
@@ -37,7 +39,8 @@ def get_all_runs(gameid, catid):
     while True:
         print(i)
         i += 1
-        req = requests.get("https://www.speedrun.com/api/v1/runs?game={}&category={}&embed=players&offset={}".format(gameid, catid, offset)).json()
+        req = requests.get(
+            "https://www.speedrun.com/api/v1/runs?game={}&category={}&embed=players&offset={}".format(gameid, catid, offset)).json()
         size = req["pagination"]["size"]
         if size > 0:
             ret = ret + req["data"]
@@ -46,6 +49,7 @@ def get_all_runs(gameid, catid):
             break
 
     return ret
+
 
 @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_game_leaderboards(game_id):
@@ -64,11 +68,11 @@ def get_game_leaderboards(game_id):
                     "leaderboards/{}/level/{}/{}?embed=variables".format(game.id, level.id, category.id)))
         elif category.type == 'per-game' and not args.il:
             lbs[category.name] = get_all_runs(game.id, category.id)
-                #"leaderboards/{}/category/{}?embed=variables".format(game.id, category.id)))
+            # "leaderboards/{}/category/{}?embed=variables".format(game.id, category.id)))
 
     return lbs
 
-#@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
+@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def append_run(r, runs):
     subcategory = ""
 
@@ -83,16 +87,20 @@ def append_run(r, runs):
 
     players = ""
     try:
-        players = ", ".join(list(map(lambda p: p['names']['international'], r["players"]["data"])))
+        players = ", ".join(
+            list(map(lambda p: p['names']['international'], r["players"]["data"])))
     except KeyError:
-        players = ", ".join(list(map(lambda p: p['name'], r["players"]["data"])))
+        players = ", ".join(
+            list(map(lambda p: p['name'], r["players"]["data"])))
 
     rejected = 1 if r["status"]["status"] == "rejected" else 0
+    new = 1 if r["status"]["status"] == "new" else 0
 
     examiner = ""
 
     if "examiner" in r["status"] and not r["status"]["examiner"] is None:
-        examiner_req = requests.get("https://www.speedrun.com/api/v1/users/{}".format(r["status"]["examiner"])).json()
+        examiner_req = requests.get(
+            "https://www.speedrun.com/api/v1/users/{}".format(r["status"]["examiner"])).json()
         if "status" not in examiner_req:
             examiner = examiner_req["data"]["names"]["international"]
 
@@ -111,7 +119,8 @@ def append_run(r, runs):
             "comment": r["comment"],
             "videos": videos,
             "rejected": rejected,
-            "reason": reason + " ({})".format(examiner) if rejected else ""
+            "reason": reason + " ({})".format(examiner) if rejected else "",
+            "new": new
         }
     )
 
@@ -150,20 +159,43 @@ if args.csv:
     with open(dir + '.csv', 'w') as f:
         f.write(pd.read_json(runs_json).to_csv())
 
+header_dup = True
+header_new = True
+
 if args.sqlite:
     connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
     cursor.execute(
-        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text)'.format(args.game))
+        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, new integer, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text, hash text)'.format(args.game))
 
     #columns = list(runs[0].keys())
-    columns = ["players", "times", "platform", "region", "emulated", "date", "comment", "videos", "rejected", "reason"]
+    columns = ["players", "times", "platform", "region", "emulated",
+               "date", "comment", "videos", "rejected", "reason", "new"]
     for row in runs:
         keys = (args.category,) + \
-            tuple(row[c] for c in columns) + (None, False, False, False, False, False, True if row["videos"] == "" else False) + (row['subcategory'],)
+            tuple(row[c] for c in columns) + (None, False, False, False, False,
+                                              False, True if row["videos"] == "" else False) + (row['subcategory'],)
         hash = hashlib.sha256(repr(keys).encode()).hexdigest()
+
+        #cursor.execute("SELECT * FROM {} WHERE player='{}' AND category='{}' AND time='{}' AND date='{}' AND rejected='{}'"
+                      # .format(args.game, row["players"], args.category, row["times"], row["date"], row["rejected"], row["comment"], row["reason"]))
+        cursor.execute("SELECT * FROM {} WHERE hash='{}'".format(args.game, hash))
+        result = cursor.fetchall()
+        print(result)
+        if len(result) > 0:
+            with open("out/duplicates.csv", 'a+') as f:
+                #f.write(pd.read_json(json.dumps(result)).to_csv(header=header_dup, index=False))
+                if header_dup == True:
+                    header_dup = False
+            continue
+
+        with open("out/new.csv", 'a+') as f:
+            f.write(pd.read_json(json.dumps([(args.game,) + keys + (hash,)])).to_csv(header=header_new, index=False))
+            if header_new == True:
+                header_new = False
+
         cursor.execute(
-            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys)
+            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys + (hash,))
 
     connection.commit()
     connection.close()
