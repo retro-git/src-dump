@@ -122,7 +122,8 @@ def append_run(r, runs):
             "comment": r["comment"],
             "videos": videos,
             "rejected": rejected,
-            "reason": reason + " ({})".format(examiner) if rejected else "",
+            "reason": reason,
+            "examiner": examiner,
             "new": new,
             "id": r["id"]
         }
@@ -170,11 +171,11 @@ if args.sqlite:
     connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
     cursor.execute(
-        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, new integer, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text, id text, hash text)'.format(args.game))
+        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, examiner text, new integer, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text, id text, hash text)'.format(args.game))
 
     #columns = list(runs[0].keys())
     columns = ["players", "times", "platform", "region", "emulated",
-               "date", "comment", "videos", "rejected", "reason", "new"]
+               "date", "comment", "videos", "rejected", "reason", "examiner", "new"]
     for row in runs:
         keys = (args.category,) + \
             tuple(row[c] for c in columns) + (None, False, False, False, False,
@@ -206,7 +207,7 @@ if args.sqlite:
                 header_new = False
 
         cursor.execute(
-            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys + (hash,))
+            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys + (hash,))
 
     connection.commit()
     connection.close()
