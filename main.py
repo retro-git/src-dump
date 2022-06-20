@@ -34,19 +34,22 @@ api.debug = 1
 @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_all_runs(gameid, catid):
     ret = list()
-    offset = 0
     i = 1
+    max = 200
+    uri = "https://www.speedrun.com/api/v1/runs?game={}&category={}&max={}&embed=players%2Cplatform%2Cregion".format(gameid, catid, max)
     while True:
+        print(uri)
         print(i)
         i += 1
-        req = requests.get(
-            "https://www.speedrun.com/api/v1/runs?game={}&category={}&embed=players&offset={}".format(gameid, catid, offset)).json()
+        req = requests.get(uri).json()
         size = req["pagination"]["size"]
         if size > 0:
             ret = ret + req["data"]
-            offset += size
-        else:
+
+        if size < max:
             break
+
+        uri = next(filter(lambda l: l["rel"] == "next", req["pagination"]["links"]))["uri"]
 
     return ret
 
@@ -112,8 +115,8 @@ def append_run(r, runs):
             "subcategory": subcategory,
             "players": players,
             "times": r["times"]['primary_t'],
-            "platform": dt.Platform(api, api.get("platforms/{}".format(r["system"]['platform']))).name if not r["system"]['platform'] is None else "",
-            "region": dt.Region(api, api.get("regions/{}".format(r["system"]['region']))).name if not r["system"]['region'] is None else "",
+            "platform": r["platform"]["data"]["name"] if r["platform"]["data"] else "",
+            "region": r["region"]["data"]["name"] if r["region"]["data"] else "",
             "emulated": r["system"]['emulated'],
             "date": r["date"],
             "comment": r["comment"],
