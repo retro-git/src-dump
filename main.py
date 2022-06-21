@@ -31,30 +31,46 @@ api = srcomapi.SpeedrunCom()
 api.debug = 1
 
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
+# @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_all_runs(gameid, catid):
     ret = list()
     i = 1
     max = 200
-    uri = "https://www.speedrun.com/api/v1/runs?game={}&category={}&max={}&embed=players%2Cplatform%2Cregion".format(gameid, catid, max)
-    while True:
-        print(uri)
-        print(i)
-        i += 1
-        req = requests.get(uri).json()
-        size = req["pagination"]["size"]
-        if size > 0:
-            ret = ret + req["data"]
+    orderby = "submitted"
 
-        if size < max:
+    directions = ["desc", "asc"]
+
+    for dir in directions:
+        print(len(ret))
+        uri = "https://www.speedrun.com/api/v1/runs?game={}&category={}&max={}&embed=players%2Cplatform%2Cregion&orderby={}&direction={}".format(
+            gameid, catid, max, orderby, dir)
+
+        while True:
+            print(uri)
+            print(i)
+            i += 1
+            req = requests.get(uri).json()
+
+            if "status" in req and req["status"] == 400:
+                break
+
+            size = req["pagination"]["size"]
+            if size > 0:
+                ret = ret + req["data"]
+
+            if size < max:
+                break
+
+            uri = next(filter(lambda l: l["rel"] == "next", req["pagination"]["links"]))[
+                "uri"]
+
+        if len(ret) < 10000:
             break
-
-        uri = next(filter(lambda l: l["rel"] == "next", req["pagination"]["links"]))["uri"]
-
+        
     return ret
 
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
+# @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def get_game_leaderboards(game_id):
     game = api.get_game(game_id)
 
@@ -75,7 +91,8 @@ def get_game_leaderboards(game_id):
 
     return lbs
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=20))
+
+# @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def append_run(r, runs):
     subcategory = ""
 
@@ -92,7 +109,7 @@ def append_run(r, runs):
     try:
         players = ", ".join(
             list(map(lambda p: p['names']['international'], r["players"]["data"])))
-    except KeyError:
+    except:
         players = ", ".join(
             list(map(lambda p: p['name'], r["players"]["data"])))
 
@@ -180,29 +197,35 @@ if args.sqlite:
         keys = (args.category,) + \
             tuple(row[c] for c in columns) + (None, False, False, False, False,
                                               False, True if row["videos"] == "" else False) + (row['subcategory'], row['id'])
-        keys_hash = (args.category,) + tuple(row[c] for c in columns) + (row['subcategory'], row['id'])
+        keys_hash = (args.category,) + \
+            tuple(row[c] for c in columns) + (row['subcategory'], row['id'])
         hash = hashlib.sha256(repr(keys_hash).encode()).hexdigest()
 
-        #cursor.execute("SELECT * FROM {} WHERE player='{}' AND category='{}' AND time='{}' AND date='{}' AND rejected='{}'"
-                      # .format(args.game, row["players"], args.category, row["times"], row["date"], row["rejected"], row["comment"], row["reason"]))
-        cursor.execute("SELECT hash FROM {} WHERE id='{}'".format(args.game, row["id"]))
+        # cursor.execute("SELECT * FROM {} WHERE player='{}' AND category='{}' AND time='{}' AND date='{}' AND rejected='{}'"
+        # .format(args.game, row["players"], args.category, row["times"], row["date"], row["rejected"], row["comment"], row["reason"]))
+        cursor.execute("SELECT hash FROM {} WHERE id='{}'".format(
+            args.game, row["id"]))
         result = cursor.fetchall()
-        #print(result)
+        # print(result)
         if len(result) > 0:
             h = result[0][0]
             if h == hash:
                 with open("out/duplicates.csv", 'a+') as f:
-                    cursor.execute("SELECT * FROM {} WHERE id='{}'".format(args.game, row["id"]))
+                    cursor.execute(
+                        "SELECT * FROM {} WHERE id='{}'".format(args.game, row["id"]))
                     full_row = cursor.fetchall()
-                    f.write(pd.read_json(json.dumps(full_row)).to_csv(header=header_dup, index=False))
+                    f.write(pd.read_json(json.dumps(full_row)).to_csv(
+                        header=header_dup, index=False))
                     if header_dup == True:
                         header_dup = False
                 continue
             else:
-                cursor.execute("DELETE from {} where id='{}'".format(args.game, row["id"]))
+                cursor.execute("DELETE from {} where id='{}'".format(
+                    args.game, row["id"]))
 
         with open("out/new.csv", 'a+') as f:
-            f.write(pd.read_json(json.dumps([(args.game,) + keys + (hash,)])).to_csv(header=header_new, index=False))
+            f.write(pd.read_json(json.dumps(
+                [(args.game,) + keys + (hash,)])).to_csv(header=header_new, index=False))
             if header_new == True:
                 header_new = False
 
