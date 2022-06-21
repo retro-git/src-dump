@@ -94,11 +94,17 @@ def get_game_leaderboards(game_id):
 
 # @retry(wait=wait_exponential(multiplier=1, min=4, max=20))
 def append_run(r, runs):
-    subcategory = ""
+    subcat_obj = []
 
     if r["values"]:
-        subcategory = ", ".join(
-            list(map(lambda k: dt.Variable(api, api.get("variables/{}".format(k))).values["values"][r["values"][k]]["label"], r["values"].keys())))
+        vars = list(map(lambda k: dt.Variable(api, api.get("variables/{}".format(k))), r["values"].keys()))
+        for var in vars:
+            subcat_obj.append({"name": var.name, "is_subcategory": var.is_subcategory, "value": var.values["values"][r["values"][var.id]]["label"]})
+        
+        #subcategory = ", ".join(
+          #  list(map(lambda k: dt.Variable(api, api.get("variables/{}".format(k))).values["values"][r["values"][k]]["label"], r["values"].keys())))
+
+    subcategory = json.dumps(subcat_obj)
 
     videos = ""
     if not r["videos"] is None:
@@ -132,6 +138,8 @@ def append_run(r, runs):
             "subcategory": subcategory,
             "players": players,
             "times": r["times"]['primary_t'],
+            "realtime": r["times"]["realtime_t"],
+            "gametime": r["times"]["ingame_t"],
             "platform": r["platform"]["data"]["name"] if r["platform"]["data"] else "",
             "region": r["region"]["data"]["name"] if r["region"]["data"] else "",
             "emulated": r["system"]['emulated'],
@@ -188,10 +196,10 @@ if args.sqlite:
     connection = sqlite3.connect('out/srcom.sqlite')
     cursor = connection.cursor()
     cursor.execute(
-        'Create TABLE if not exists {} (category text, player text, time real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, examiner text, new integer, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text, id text, hash text)'.format(args.game))
+        'Create TABLE if not exists {} (category text, player text, time real, realtime real, gametime real, platform text, region text, emulated integer, date text, comment text, link text, rejected integer, reason text, examiner text, new integer, [editor\'s note] text, cheated integer, removed integer, disputed integer, anonymised integer, unsubmitted integer, [no video] integer, subcategory text, id text, hash text)'.format(args.game))
 
     #columns = list(runs[0].keys())
-    columns = ["players", "times", "platform", "region", "emulated",
+    columns = ["players", "times", "realtime", "gametime", "platform", "region", "emulated",
                "date", "comment", "videos", "rejected", "reason", "examiner", "new"]
     for row in runs:
         keys = (args.category,) + \
@@ -230,7 +238,7 @@ if args.sqlite:
                 header_new = False
 
         cursor.execute(
-            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys + (hash,))
+            'insert into {} values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'.format(args.game), keys + (hash,))
 
     connection.commit()
     connection.close()
